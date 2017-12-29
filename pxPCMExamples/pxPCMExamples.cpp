@@ -1,4 +1,3 @@
-// pxPCMExamples.cpp : 定义控制台应用程序的入口点。
 #include "stdafx.h"
 #include <fstream>
 #include <iostream>
@@ -23,10 +22,10 @@ int _tmain(int argc, _TCHAR* argv[])
 	cout << "Read file to a buffer Done!!!\n\n";  
 
 	// 从文件中读取采样点并打印
-	short szItem[1024 * 16] = {0};
-	memcpy(szItem, pszPCMBuffer, 1024);
+	short szItem[1024] = {0};
+	memcpy(szItem, pszPCMBuffer, 256);
 
-	for (int i = 0; i < 512; i++)
+	for (int i = 0; i < 128; i++)
 	{
 		printf("%6d ", szItem[i]);
 
@@ -46,19 +45,34 @@ int _tmain(int argc, _TCHAR* argv[])
 	{
 		if ((nPos / 2) % 2 == 0) // 偶数
 		{
-			fwrite(pszPCMBuffer + nPos, 1, 2, fpLeft); 
+			if (fpLeft)
+			{
+				fwrite(pszPCMBuffer + nPos, 1, 2, fpLeft); 
+			}
 		}
 		else
 		{
-			fwrite(pszPCMBuffer + nPos, 1, 2, fpRight); 
+			if (fpRight)
+			{
+				fwrite(pszPCMBuffer + nPos, 1, 2, fpRight); 
+			}
 		}
 
 		nPos += 2;
 	}
 
-	fclose(fpLeft);  
-	fclose(fpRight);  
+	if (fpLeft)
+	{
+		fclose(fpLeft);  
+		fpLeft = NULL;
+	}
 
+    if (fpRight)
+    {
+		fclose(fpRight);
+		fpRight = NULL;
+    }
+	  
 	printf("\n Split stereo to left and right Done. \n");
 
 	if (pszPCMBuffer)
