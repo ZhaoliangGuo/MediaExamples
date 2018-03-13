@@ -186,6 +186,24 @@ void SaveWaveData(BYTE *CaptureBuffer, size_t BufferSize, const WAVEFORMATEX *Wa
 					
 }
 
+//#define DEF_CAPTURE_MIC
+/*
+注1: 静音时 填充0
+
+注2: 测试时 应该将录音设备中的麦克风设为默认设备
+
+注3: 定义DEF_CAPTURE_MIC时仅测试采集麦克风
+     否则测试采集声卡。
+
+注4:
+	 测试采集声卡:
+	 Initialize时需要设置AUDCLNT_STREAMFLAGS_LOOPBACK
+	 这种模式下，音频engine会将rending设备正在播放的音频流， 拷贝一份到音频的endpoint buffer
+	 这样的话，WASAPI client可以采集到the stream.
+	 此时仅采集到Speaker的声音
+
+*/
+
 int _tmain(int argc, _TCHAR* argv[])
 {
 	HRESULT hr;
@@ -220,7 +238,12 @@ int _tmain(int argc, _TCHAR* argv[])
 		(void**)&pEnumerator);
 	EXIT_ON_ERROR(hr)
 
-	hr = pEnumerator->GetDefaultAudioEndpoint(eCapture, eConsole,    &pDevice);
+#ifdef DEF_CAPTURE_MIC
+	hr = pEnumerator->GetDefaultAudioEndpoint(eCapture, eConsole, &pDevice); // 采集麦克风
+#else 
+	hr = pEnumerator->GetDefaultAudioEndpoint(eRender, eConsole, &pDevice);  // 采集声卡
+#endif	
+
 	//hr = pEnumerator->GetDefaultAudioEndpoint(eRender,  eMultimedia, &pDevice);
 	EXIT_ON_ERROR(hr)
 
@@ -254,6 +277,24 @@ int _tmain(int argc, _TCHAR* argv[])
 		<<"wBitsPerSample  : "<<pwfx->wBitsPerSample<<endl
 		<<"cbSize          : "<<pwfx->cbSize<<endl<<endl;
 
+	// test for IsFormatSupported
+	//////////////////////////////////////////////////////////////////////////
+	/*WAVEFORMATEX *wf;
+	hr = pAudioClient->IsFormatSupported(AUDCLNT_SHAREMODE_SHARED, pwfx, &wf);
+	if (FAILED(hr)) 
+	{
+		printf("IsFormatSupported fail.\n");
+	}
+	printf("\IsFormatSupported...\n");
+	cout<<"wFormatTag      : "<<wf->wFormatTag<<endl
+		<<"nChannels       : "<<wf->nChannels<<endl
+		<<"nSamplesPerSec  : "<<wf->nSamplesPerSec<<endl
+		<<"nAvgBytesPerSec : "<<wf->nAvgBytesPerSec<<endl
+		<<"nBlockAlign     : "<<wf->nBlockAlign<<endl
+		<<"wBitsPerSample  : "<<wf->wBitsPerSample<<endl
+		<<"cbSize          : "<<wf->cbSize<<endl<<endl;*/
+	//////////////////////////////////////////////////////////////////////////
+
 	int nFrameSize = (pwfx->wBitsPerSample / 8) * pwfx->nChannels;
 
 	cout<<"nFrameSize           : "<<nFrameSize<<" Bytes"<<endl
@@ -263,6 +304,7 @@ int _tmain(int argc, _TCHAR* argv[])
 	// 初始化管理对象，在这里，你可以指定它的最大缓冲区长度，这个很重要，
 	// 应用程序控制数据块的大小以及延时长短都靠这里的初始化，具体参数大家看看文档解释
 	// https://msdn.microsoft.com/en-us/library/dd370875(v=vs.85).aspx
+#ifdef DEF_CAPTURE_MIC
 	hr = pAudioClient->Initialize(
 		AUDCLNT_SHAREMODE_SHARED,
 		0,
@@ -270,6 +312,35 @@ int _tmain(int argc, _TCHAR* argv[])
 		0,
 		pwfx,
 		NULL);
+#else
+	/*
+		The AUDCLNT_STREAMFLAGS_LOOPBACK flag enables loopback recording. 
+		In loopback recording, the audio engine copies the audio stream 
+		that is being played by a rendering endpoint device into an audio endpoint buffer 
+		so that a WASAPI client can capture the stream. 
+		If this flag is set, the IAudioClient::Initialize method attempts to open a capture buffer on the rendering device. 
+		This flag is valid only for a rendering device 
+		and only if the Initialize call sets the ShareMode parameter to AUDCLNT_SHAREMODE_SHARED. 
+		Otherwise the Initialize call will fail. 
+		If the call succeeds, 
+		the client can call the IAudioClient::GetService method 
+		to obtain an IAudioCaptureClient interface on the rendering device. 
+		For more information, see Loopback Recording.
+	*/
+	hr = pAudioClient->Initialize(
+		AUDCLNT_SHAREMODE_SHARED,
+		AUDCLNT_STREAMFLAGS_LOOPBACK, // 这种模式下，音频engine会将rending设备正在播放的音频流， 拷贝一份到音频的endpoint buffer
+		                              // 这样的话，WASAPI client可以采集到the stream.
+									  // 如果AUDCLNT_STREAMFLAGS_LOOPBACK被设置，IAudioClient::Initialize会尝试
+									  // 在rending设备开辟一块capture buffer。
+									  // AUDCLNT_STREAMFLAGS_LOOPBACK只对rending设备有效，
+									  // Initialize仅在AUDCLNT_SHAREMODE_SHARED时才可以使用, 否则Initialize会失败。
+						              // Initialize成功后，可以用IAudioClient::GetService可获取该rending设备的IAudioCaptureClient接口。
+		hnsRequestedDuration,
+		0,
+		pwfx,
+		NULL);
+#endif
 	EXIT_ON_ERROR(hr)
 
 	// Get the size of the allocated buffer.
@@ -335,6 +406,7 @@ int _tmain(int argc, _TCHAR* argv[])
 		Sleep(hnsActualDuration/REFTIMES_PER_MILLISEC/2);
 
 		hr = pCaptureClient->GetNextPacketSize(&packetLength);
+		printf("GetNextPacketSize #0 packetLength:%06u\n", packetLength);
 		EXIT_ON_ERROR(hr)
 
 		while (packetLength != 0)
@@ -384,6 +456,20 @@ int _tmain(int argc, _TCHAR* argv[])
 
 			hr = pCaptureClient->GetNextPacketSize(&packetLength);
 			EXIT_ON_ERROR(hr)
+
+			// test
+			//////////////////////////////////////////////////////////////////////////
+			UINT32 ui32NumPaddingFrames;
+			hr = pAudioClient->GetCurrentPadding(&ui32NumPaddingFrames);
+			EXIT_ON_ERROR(hr)
+
+			REFERENCE_TIME hnsStreamLatency;
+			hr = pAudioClient->GetStreamLatency(&hnsStreamLatency);
+			EXIT_ON_ERROR(hr)
+
+			printf("GetNextPacketSize #0 packetLength:%06u, Padding:%6u, Latency:%I64d\n", 
+			       packetLength, ui32NumPaddingFrames, hnsStreamLatency);
+			//////////////////////////////////////////////////////////////////////////
 
 			// 采集一定数目个buffer后退出
 			if (nCnt == 1000)
