@@ -186,14 +186,13 @@ void SaveWaveData(BYTE *CaptureBuffer, size_t BufferSize, const WAVEFORMATEX *Wa
 					
 }
 
-//#define DEF_CAPTURE_MIC
+#define DEF_CAPTURE_MIC
 /*
 注1: 静音时 填充0
 
 注2: 测试时 应该将录音设备中的麦克风设为默认设备
 
-注3: 定义DEF_CAPTURE_MIC时仅测试采集麦克风
-     否则测试采集声卡。
+注3: 定义DEF_CAPTURE_MIC时仅测试采集麦克风 否则测试采集声卡。
 
 注4:
 	 测试采集声卡:
@@ -201,7 +200,6 @@ void SaveWaveData(BYTE *CaptureBuffer, size_t BufferSize, const WAVEFORMATEX *Wa
 	 这种模式下，音频engine会将rending设备正在播放的音频流， 拷贝一份到音频的endpoint buffer
 	 这样的话，WASAPI client可以采集到the stream.
 	 此时仅采集到Speaker的声音
-
 */
 
 int _tmain(int argc, _TCHAR* argv[])
@@ -215,7 +213,6 @@ int _tmain(int argc, _TCHAR* argv[])
 	WAVEFORMATEX        *pwfx           = NULL;
 
 	REFERENCE_TIME hnsRequestedDuration = REFTIMES_PER_SEC;
-	REFERENCE_TIME hnsActualDuration;
 	UINT32         bufferFrameCount;
 	UINT32         numFramesAvailable;
 
@@ -226,31 +223,30 @@ int _tmain(int argc, _TCHAR* argv[])
 	hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
 	if (FAILED(hr))
 	{
-		printf("Unable to initialize COM in render thread: %x\n", hr);
+		printf("Unable to initialize COM in thread: %x\n", hr);
 		return hr;
 	}
 
 	// 首先枚举你的音频设备
 	// 你可以在这个时候获取到你机器上所有可用的设备，并指定你需要用到的那个设置
-	hr = CoCreateInstance(
-		CLSID_MMDeviceEnumerator, NULL,
-		CLSCTX_ALL, IID_IMMDeviceEnumerator,
-		(void**)&pEnumerator);
+	hr = CoCreateInstance(CLSID_MMDeviceEnumerator, 
+						  NULL,
+						  CLSCTX_ALL, 
+						  IID_IMMDeviceEnumerator,
+						  (void**)&pEnumerator);
 	EXIT_ON_ERROR(hr)
 
 #ifdef DEF_CAPTURE_MIC
 	hr = pEnumerator->GetDefaultAudioEndpoint(eCapture, eConsole, &pDevice); // 采集麦克风
+	//hr = pEnumerator->GetDefaultAudioEndpoint(eCapture,  eMultimedia, &pDevice);
 #else 
 	hr = pEnumerator->GetDefaultAudioEndpoint(eRender, eConsole, &pDevice);  // 采集声卡
 #endif	
 
-	//hr = pEnumerator->GetDefaultAudioEndpoint(eRender,  eMultimedia, &pDevice);
 	EXIT_ON_ERROR(hr)
 
 	// 创建一个管理对象，通过它可以获取到你需要的一切数据
-	hr = pDevice->Activate(
-		IID_IAudioClient, CLSCTX_ALL,
-		NULL, (void**)&pAudioClient);
+	hr = pDevice->Activate(IID_IAudioClient, CLSCTX_ALL, NULL, (void**)&pAudioClient);
 	EXIT_ON_ERROR(hr)
 
 	hr = pAudioClient->GetMixFormat(&pwfx);
@@ -307,7 +303,7 @@ int _tmain(int argc, _TCHAR* argv[])
 #ifdef DEF_CAPTURE_MIC
 	hr = pAudioClient->Initialize(
 		AUDCLNT_SHAREMODE_SHARED,
-		0,
+		AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_NOPERSIST,
 		hnsRequestedDuration,
 		0,
 		pwfx,
@@ -343,6 +339,57 @@ int _tmain(int argc, _TCHAR* argv[])
 #endif
 	EXIT_ON_ERROR(hr)
 
+	/*
+		https://msdn.microsoft.com/en-us/library/windows/desktop/dd370874(v=vs.85).aspx
+		The GetStreamLatency method retrieves the maximum latency for the current stream 
+		and can be called any time after the stream has been initialized.
+
+		This method requires prior initialization of the IAudioClient interface. 
+		All calls to this method will fail with the error AUDCLNT_E_NOT_INITIALIZED until 
+		the client initializes the audio stream by successfully calling the IAudioClient::Initialize method.
+		This method retrieves the maximum latency for the current stream. 
+		The value will not change for the lifetime of the IAudioClient object.
+		Rendering clients can use this latency value to compute the minimum amount of data 
+		that they can write during any single processing pass. 
+		To write less than this minimum is to risk introducing glitches into the audio stream. 
+		For more information, see IAudioRenderClient::GetBuffer.
+	
+		1. 该函数返回当前流的最大延时 在IAudioClient对象的生命周期内 不会发生变化
+		2. Rendering客户端可以用这个延时值，来计算每次处理pass可以写的最小数据量。
+
+		注: 使用前须先调用IAudioClient::Initialize
+	*/
+
+	REFERENCE_TIME hnsStreamLatency;
+	hr = pAudioClient->GetStreamLatency(&hnsStreamLatency);
+	EXIT_ON_ERROR(hr)
+	
+	cout<<"GetStreamLatency     : "<<hnsStreamLatency
+	<<" REFERENCE_TIME time units. 即("<<hnsStreamLatency/10000<<"ms)"<<endl;
+
+	/*
+		phnsDefaultDevicePeriod [out]
+		Pointer to a REFERENCE_TIME variable into which the method writes a time value 
+		specifying the default interval between periodic processing passes by the audio engine. 
+		The time is expressed in 100-nanosecond units. 
+		
+		phnsMinimumDevicePeriod [out]
+		Pointer to a REFERENCE_TIME variable into which the method writes a time value 
+		specifying the minimum interval between periodic processing passes by the audio endpoint device. 
+		The time is expressed in 100-nanosecond units.
+	*/
+
+	REFERENCE_TIME hnsDefaultDevicePeriod;
+	REFERENCE_TIME hnsMinimumDevicePeriod;
+	hr = pAudioClient->GetDevicePeriod(&hnsDefaultDevicePeriod, &hnsMinimumDevicePeriod);
+	EXIT_ON_ERROR(hr)
+
+	cout<<"GetDevicePeriod  ...\n"
+		<<"hnsDefaultDevicePeriod : "<<hnsDefaultDevicePeriod
+		<<" REFERENCE_TIME time units. 即("<<hnsDefaultDevicePeriod/10000<<"ms)"<<endl
+		<<"hnsMinimumDevicePeriod : "<<hnsMinimumDevicePeriod
+		<<" REFERENCE_TIME time units. 即("<<hnsMinimumDevicePeriod/10000<<"ms)"<<endl;
+
 	// Get the size of the allocated buffer.
 	// 这个buffersize，指的是缓冲区最多可以存放多少帧的数据量
 	/*
@@ -372,26 +419,50 @@ int _tmain(int argc, _TCHAR* argv[])
 	*/
 	hr = pAudioClient->GetBufferSize(&bufferFrameCount);
 	EXIT_ON_ERROR(hr)
+	cout<<endl<<"GetBufferSize        : "<<bufferFrameCount<<endl;
 
-	cout<<endl<<"bufferFrameCount : "<<bufferFrameCount<<endl;
+	// SetEventHandle
+	//////////////////////////////////////////////////////////////////////////
+	HANDLE hAudioSamplesReadyEvent = CreateEventEx(NULL, NULL, 0, EVENT_MODIFY_STATE | SYNCHRONIZE);
+	if (hAudioSamplesReadyEvent == NULL)
+	{
+		printf("Unable to create samples ready event: %d.\n", GetLastError());
+		goto Exit;
+	}
+
+	/*
+		The SetEventHandle method sets the event handle that the system signals 
+		when an audio buffer is ready to be processed by the client.
+		当音频的buffer就绪 可被client处理时， 会发出系统信号
+		SetEventHandle用于设置处理该信号的event的handle
+
+		During stream initialization, the client can, as an option, enable event-driven buffering. 
+		To do so, the client calls the IAudioClient::Initialize method 
+		with the AUDCLNT_STREAMFLAGS_EVENTCALLBACK flag set. 
+		After enabling event-driven buffering, 
+		and before calling the IAudioClient::Start method to start the stream, 
+		the client must call SetEventHandle to register the event handle 
+		that the system will signal each time a buffer becomes ready to be processed by the client.
+		使用SetEventHandle， 需要在IAudioClient::Initialize设置AUDCLNT_STREAMFLAGS_EVENTCALLBACK。
+		SetEventHandle应该在调用IAudioClient::Start之前调用。
+	*/
+	hr = pAudioClient->SetEventHandle(hAudioSamplesReadyEvent);
+	if (FAILED(hr))
+	{
+		printf("Unable to set ready event: %x.\n", hr);
+		return false;
+	}
+	//////////////////////////////////////////////////////////////////////////
 
 	// 创建采集管理接口
-	hr = pAudioClient->GetService(
-		IID_IAudioCaptureClient,
-		(void**)&pCaptureClient);
+	hr = pAudioClient->GetService(IID_IAudioCaptureClient, (void**)&pCaptureClient);
 	EXIT_ON_ERROR(hr)
-
-	// Calculate the actual duration of the allocated buffer.
-	hnsActualDuration = (double)REFTIMES_PER_SEC * bufferFrameCount / pwfx->nSamplesPerSec;
-
-	cout<<endl<<"hnsActualDuration : "<<hnsActualDuration<<endl;
 
 	hr = pAudioClient->Start();  // Start recording.
 	EXIT_ON_ERROR(hr)
 
 	printf("\nAudio Capture begin...\n\n");
 
-	BOOL bDone = FALSE;
 	int  nCnt  = 0;
 
 	size_t nCaptureBufferSize   = 8*1024*1024;
@@ -399,86 +470,123 @@ int _tmain(int argc, _TCHAR* argv[])
 
 	BYTE *pbyCaptureBuffer = new (std::nothrow) BYTE[nCaptureBufferSize];
 
+	HANDLE waitArray[3];
+	waitArray[0]= hAudioSamplesReadyEvent;
+
+	bool stillPlaying = true;
+
 	// Each loop fills about half of the shared buffer.
-	while (bDone == FALSE)
+	while (stillPlaying)
 	{
-		// Sleep for half the buffer duration.
-		Sleep(hnsActualDuration/REFTIMES_PER_MILLISEC/2);
-
-		hr = pCaptureClient->GetNextPacketSize(&packetLength);
-		printf("GetNextPacketSize #0 packetLength:%06u\n", packetLength);
-		EXIT_ON_ERROR(hr)
-
-		while (packetLength != 0)
+		DWORD waitResult = WaitForMultipleObjects(1, waitArray, FALSE, INFINITE);
+		switch (waitResult)
 		{
-			// Get the available data in the shared buffer.
-			// 锁定缓冲区，获取数据
-			hr = pCaptureClient->GetBuffer(&pData,
-				                           &numFramesAvailable,
-				                           &flags, NULL, NULL);
-			EXIT_ON_ERROR(hr)
-
-			nCnt++;
-
-			printf("%04d: GetBuffer Success!!! numFramesAvailable:%u\n", nCnt, numFramesAvailable);
-
-			UINT32 framesToCopy = min(numFramesAvailable, static_cast<UINT32>((nCaptureBufferSize - nCurrentCaptureIndex) / nFrameSize));
-			if (framesToCopy != 0)
-			{
-				//
-				//  The flags on capture tell us information about the data.
-				//
-				//  We only really care about the silent flag since we want to put frames of silence into the buffer
-				//  when we receive silence.  We rely on the fact that a logical bit 0 is silence for both float and int formats.
-				//
-				if (flags & AUDCLNT_BUFFERFLAGS_SILENT)
-				{
-					//
-					//  Fill 0s from the capture buffer to the output buffer.
-					//
-					ZeroMemory(&pbyCaptureBuffer[nCurrentCaptureIndex], framesToCopy*nFrameSize);
-				}
-				else
-				{
-					//
-					//  Copy data from the audio engine buffer to the output buffer.
-					//
-					CopyMemory(&pbyCaptureBuffer[nCurrentCaptureIndex], pData, framesToCopy*nFrameSize);
-				}
-				//
-				//  Bump the capture buffer pointer.
-				//
-				nCurrentCaptureIndex += framesToCopy*nFrameSize;
-			}
-
-			hr = pCaptureClient->ReleaseBuffer(numFramesAvailable);
-			EXIT_ON_ERROR(hr)
-
+		case WAIT_OBJECT_0 + 0:     // _AudioSamplesReadyEvent
 			hr = pCaptureClient->GetNextPacketSize(&packetLength);
 			EXIT_ON_ERROR(hr)
 
-			// test
-			//////////////////////////////////////////////////////////////////////////
-			UINT32 ui32NumPaddingFrames;
-			hr = pAudioClient->GetCurrentPadding(&ui32NumPaddingFrames);
-			EXIT_ON_ERROR(hr)
+			printf("%06d # _AudioSamplesReadyEvent packetLength:%06u \n", nCnt, packetLength);
 
-			REFERENCE_TIME hnsStreamLatency;
-			hr = pAudioClient->GetStreamLatency(&hnsStreamLatency);
-			EXIT_ON_ERROR(hr)
-
-			printf("GetNextPacketSize #0 packetLength:%06u, Padding:%6u, Latency:%I64d\n", 
-			       packetLength, ui32NumPaddingFrames, hnsStreamLatency);
-			//////////////////////////////////////////////////////////////////////////
-
-			// 采集一定数目个buffer后退出
-			if (nCnt == 1000)
+			while (packetLength != 0)
 			{
-				bDone = TRUE;
-				break;
-			}
-		}
-	}
+				// Get the available data in the shared buffer.
+				// 锁定缓冲区，获取数据
+				hr = pCaptureClient->GetBuffer(&pData,
+											   &numFramesAvailable,
+											   &flags, NULL, NULL);
+				EXIT_ON_ERROR(hr)
+
+
+				nCnt++;
+	
+				// test flags
+				//////////////////////////////////////////////////////////////////////////
+				if (flags & AUDCLNT_BUFFERFLAGS_SILENT)
+				{
+					printf("AUDCLNT_BUFFERFLAGS_SILENT \n");
+				}
+
+				if (flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY)
+				{
+					printf("%06d # AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY \n", nCnt);
+				}
+				//////////////////////////////////////////////////////////////////////////
+
+				UINT32 framesToCopy = min(numFramesAvailable, static_cast<UINT32>((nCaptureBufferSize - nCurrentCaptureIndex) / nFrameSize));
+				if (framesToCopy != 0)
+				{
+					//
+					//  The flags on capture tell us information about the data.
+					//
+					//  We only really care about the silent flag since we want to put frames of silence into the buffer
+					//  when we receive silence.  We rely on the fact that a logical bit 0 is silence for both float and int formats.
+					//
+					if (flags & AUDCLNT_BUFFERFLAGS_SILENT)
+					{
+						//
+						//  Fill 0s from the capture buffer to the output buffer.
+						//
+						ZeroMemory(&pbyCaptureBuffer[nCurrentCaptureIndex], framesToCopy*nFrameSize);
+					}
+					else
+					{
+						//
+						//  Copy data from the audio engine buffer to the output buffer.
+						//
+						CopyMemory(&pbyCaptureBuffer[nCurrentCaptureIndex], pData, framesToCopy*nFrameSize);
+					}
+					//
+					//  Bump the capture buffer pointer.
+					//
+					nCurrentCaptureIndex += framesToCopy*nFrameSize;
+				}
+
+				hr = pCaptureClient->ReleaseBuffer(numFramesAvailable);
+				EXIT_ON_ERROR(hr)
+
+				hr = pCaptureClient->GetNextPacketSize(&packetLength);
+				EXIT_ON_ERROR(hr)
+
+				// test GetCurrentPadding
+				//////////////////////////////////////////////////////////////////////////
+				/*
+					This method retrieves a padding value that indicates the amount of 
+					valid, unread data that the endpoint buffer currently contains. 
+					返回buffer中合法的未读取的数据大小。
+
+					The padding value is expressed as a number of audio frames. 
+					The size in bytes of an audio frame equals 
+					the number of channels in the stream multiplied by the sample size per channel. 
+					For example, the frame size is four bytes for a stereo (2-channel) stream with 16-bit samples.
+					The padding value的单位是audio frame。
+					一个audio frame的大小等于 通道数 * 每个通道的sample大小。
+
+					For a shared-mode capture stream, the padding value reported by GetCurrentPadding 
+					specifies the number of frames of capture data 
+					that are available in the next packet in the endpoint buffer. 
+				*/
+				UINT32 ui32NumPaddingFrames;
+				hr = pAudioClient->GetCurrentPadding(&ui32NumPaddingFrames);
+				EXIT_ON_ERROR(hr)
+				if (0 != ui32NumPaddingFrames)
+				{
+					printf("GetCurrentPadding : %6u\n", ui32NumPaddingFrames);
+				}
+				//////////////////////////////////////////////////////////////////////////
+
+				// 采集一定数目个buffer后退出
+				if (nCnt == 1000)
+				{
+					stillPlaying = false;
+					break;
+				}
+
+			} // end of 'while (packetLength != 0)'
+
+			break;
+		} // end of 'switch (waitResult)'
+
+	} // end of 'while (stillPlaying)'
 
 	//
 	//  We've now captured our wave data.  Now write it out in a wave file.
@@ -503,6 +611,12 @@ Exit:
 	{
 		delete [] pbyCaptureBuffer;
 		pbyCaptureBuffer = NULL;
+	}
+
+	if (hAudioSamplesReadyEvent)
+	{
+		CloseHandle(hAudioSamplesReadyEvent);
+		hAudioSamplesReadyEvent = NULL;
 	}
 
 	getchar();
