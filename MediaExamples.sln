@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 11.00
 # Visual Studio 2010
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "WindowsAudioSession", "AudioCapture\WindowsAudioSession\WindowsAudioSession.vcxproj", "{E095EECE-4345-4BAB-98F2-41E0B22F7F10}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "AudioCapture_waveIn", "AudioCapture\AudioCapture_waveIn\AudioCapture_waveIn.vcxproj", "{90B4B9FF-FD64-469F-836F-45C3A88421D9}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -9,10 +9,10 @@ Global
 		Release|Win32 = Release|Win32
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{E095EECE-4345-4BAB-98F2-41E0B22F7F10}.Debug|Win32.ActiveCfg = Debug|Win32
-		{E095EECE-4345-4BAB-98F2-41E0B22F7F10}.Debug|Win32.Build.0 = Debug|Win32
-		{E095EECE-4345-4BAB-98F2-41E0B22F7F10}.Release|Win32.ActiveCfg = Release|Win32
-		{E095EECE-4345-4BAB-98F2-41E0B22F7F10}.Release|Win32.Build.0 = Release|Win32
+		{90B4B9FF-FD64-469F-836F-45C3A88421D9}.Debug|Win32.ActiveCfg = Debug|Win32
+		{90B4B9FF-FD64-469F-836F-45C3A88421D9}.Debug|Win32.Build.0 = Debug|Win32
+		{90B4B9FF-FD64-469F-836F-45C3A88421D9}.Release|Win32.ActiveCfg = Release|Win32
+		{90B4B9FF-FD64-469F-836F-45C3A88421D9}.Release|Win32.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
