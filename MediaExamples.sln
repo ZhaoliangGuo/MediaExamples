@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 11.00
 # Visual Studio 2010
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "AudioCapture_waveIn", "AudioCapture\AudioCapture_waveIn\AudioCapture_waveIn.vcxproj", "{90B4B9FF-FD64-469F-836F-45C3A88421D9}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "x264_encoder", "VideoEncode\x264\x264_encoder\x264_encoder.vcxproj", "{6AE5D36B-5783-468C-AA5F-9BF39E425CE2}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -9,10 +9,10 @@ Global
 		Release|Win32 = Release|Win32
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{90B4B9FF-FD64-469F-836F-45C3A88421D9}.Debug|Win32.ActiveCfg = Debug|Win32
-		{90B4B9FF-FD64-469F-836F-45C3A88421D9}.Debug|Win32.Build.0 = Debug|Win32
-		{90B4B9FF-FD64-469F-836F-45C3A88421D9}.Release|Win32.ActiveCfg = Release|Win32
-		{90B4B9FF-FD64-469F-836F-45C3A88421D9}.Release|Win32.Build.0 = Release|Win32
+		{6AE5D36B-5783-468C-AA5F-9BF39E425CE2}.Debug|Win32.ActiveCfg = Debug|Win32
+		{6AE5D36B-5783-468C-AA5F-9BF39E425CE2}.Debug|Win32.Build.0 = Debug|Win32
+		{6AE5D36B-5783-468C-AA5F-9BF39E425CE2}.Release|Win32.ActiveCfg = Release|Win32
+		{6AE5D36B-5783-468C-AA5F-9BF39E425CE2}.Release|Win32.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
